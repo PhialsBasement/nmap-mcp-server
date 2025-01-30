@@ -1,0 +1,31 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - target
+    properties:
+      target:
+        type: string
+        description: Host or network to scan
+      ports:
+        type: string
+        description: Port specification (e.g., '80,443' or '1-1000')
+      scanType:
+        type: string
+        default: quick
+        description: "Scan type: 'quick', 'full', 'version'"
+      timing:
+        type: number
+        default: 3
+        description: NMAP timing template 0-5
+      additionalFlags:
+        type: string
+        description: Optional additional NMAP flags
+  commandFunction:
+    # A function that produces the CLI command to start the MCP on stdio.
+    |-
+    (config) => ({ command: 'node', args: ['dist/index.js'], env: {} })
