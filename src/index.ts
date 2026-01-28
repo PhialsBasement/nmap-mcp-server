@@ -4,10 +4,54 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// Whitelist of allowed nmap flags for security  
+const ALLOWED_FLAGS = [  
+    '-sS', '-sT', '-sA', '-sW', '-sM', '-sU', '-sN', '-sF', '-sX',  
+    '-O', '-sV', '-sC', '-F', '-p-', '-v', '--open', '--reason',  
+    '-Pn', '-PP', '-PM', '-PO', '-PE', '-PS', '-PA', '-PU', '-PY',  
+    '-6', '-4', '-b', '-D', '-S', '-e', '-g', '-f', '-i', '-M', '-o',  
+    '-R', '-r', '-T', '-V'  
+];  
+  
+// Validate additionalFlags for security to prevent command injection  
+function validateAdditionalFlags(flags: string): boolean {  
+    if (!flags || typeof flags !== 'string') {  
+        return false;  
+    }  
+      
+    // Split flags and filter empty strings  
+    const flagArray = flags.split(' ').filter(f => f.trim());  
+      
+    // Check each flag against whitelist and dangerous characters  
+    return flagArray.every(flag => {  
+        // Check if it's an allowed single flag  
+        if (ALLOWED_FLAGS.includes(flag)) {  
+            return true;  
+        }  
+          
+        // Check if it's a safe parameterized flag  
+        if (flag.startsWith('--script=') && flag.length > 9) {  
+            return true; // Allow --script parameter  
+        }  
+          
+        if (flag.startsWith('-p') && flag.length > 2) {  
+            return true; // Allow -p parameter  
+        }  
+          
+        if (flag.startsWith('-d') && /^\d+$/.test(flag.slice(2))) {  
+            return true; // Allow debug level  
+        }  
+          
+        // Check for dangerous characters that could enable injection  
+        const dangerousChars = [';', '&', '|', '`', '$', '(', ')', '<', '>', '"', "'"];  
+        return !dangerousChars.some(char => flag.includes(char));  
+    });  
+}
 
 // Schema definitions for NMAP scanning
 const NmapScanSchema = z.object({
@@ -27,48 +71,52 @@ const server = new Server({
     },
 });
 
-async function runNmapScan(params: z.infer<typeof NmapScanSchema>) {
-    const { target, ports, scanType, timing, additionalFlags } = params;
-    
-    // Build the nmap command with proper flags
-    let command = `nmap -T${timing}`;
-    
-    // Add scan type flags
-    switch (scanType) {
-        case 'quick':
-            command += ' -F';  // Fast scan
-            break;
-        case 'full':
-            command += ' -p-';  // All ports
-            break;
-        case 'version':
-            command += ' -sV';  // Version detection
-            break;
-    }
-    
-    // Add port specification if provided
-    if (ports) {
-        command += ` -p${ports}`;
-    }
-    
-    // Add any additional flags
-    if (additionalFlags) {
-        command += ` ${additionalFlags}`;
-    }
-    
-    // Add target
-    command += ` ${target}`;
-
-    try {
-        const { stdout, stderr } = await execAsync(command);
-        if (stderr) {
-            console.error('Nmap stderr:', stderr);
-        }
-        return stdout;
-    } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new Error(`Nmap scan failed: ${errorMessage}`);
-    }
+async function runNmapScan(params: z.infer<typeof NmapScanSchema>) {  
+    const { target, ports, scanType, timing, additionalFlags } = params;  
+      
+    // Build arguments array instead of command string for security  
+    const args = [`-T${timing}`];  
+      
+    // Add scan type flags  
+    switch (scanType) {  
+        case 'quick':  
+            args.push('-F');  // Fast scan  
+            break;  
+        case 'full':  
+            args.push('-p-');  // All ports  
+            break;  
+        case 'version':  
+            args.push('-sV');  // Version detection  
+            break;  
+    }  
+      
+    // Add port specification if provided  
+    if (ports) {  
+        args.push('-p', ports);  
+    }  
+      
+    // Validate and add additional flags with security check  
+    if (additionalFlags) {  
+        if (!validateAdditionalFlags(additionalFlags)) {  
+            throw new Error('Invalid or dangerous additional flags detected');  
+        }  
+        args.push(...additionalFlags.split(' ').filter(f => f.trim()));  
+    }  
+      
+    // Add target as last argument  
+    args.push(target);  
+  
+    try {  
+        // Use execFile instead of exec to prevent shell injection  
+        const { stdout, stderr } = await execFileAsync('nmap', args);  
+        if (stderr) {  
+            console.error('Nmap stderr:', stderr);  
+        }  
+        return stdout;  
+    } catch (error: unknown) {  
+        const errorMessage = error instanceof Error ? error.message : String(error);  
+        throw new Error(`Nmap scan failed: ${errorMessage}`);  
+    }  
 }
 
 // Tool handlers
