@@ -1,3 +1,7 @@
+# DO NOT USE THIS UNLESS YOU ARE WILLING TO EXPOSE YOURSELF TO POSSIBLE VULNRABILITIES DUE TO PROMPT INJECTION. THIS REPOSITORY IS NOT BEING ACTIVELY WORKED UPON
+
+----------
+
 # MCP NMAP Server
 
 A Model Context Protocol (MCP) server that enables AI assistants to perform network scanning operations using NMAP. This server provides a standardized interface for AI models to interact with NMAP, making it possible to perform network analysis and security assessments through AI conversations.
